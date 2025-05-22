@@ -5,16 +5,18 @@ ARG EL_VERSION=9
 ARG SRPM_URL
 
 # Handle different repo configurations based on EL version
-RUN if [ "${EL_VERSION}" = "8" ] || [ "${EL_VERSION}" = "9" ]; then \
+RUN if [ "${EL_VERSION}" = "8" ]; then \
       dnf -y install dnf-plugins-core epel-release && \
-      dnf -y config-manager --set-enabled powertools || \
+      dnf -y config-manager --set-enabled powertools; \
+    elif [ "${EL_VERSION}" = "9" ]; then \
+      dnf -y install dnf-plugins-core epel-release && \
       dnf -y config-manager --set-enabled crb; \
     elif [ "${EL_VERSION}" = "10" ]; then \
       dnf -y install dnf-plugins-core && \
       dnf -y config-manager --set-enabled crb && \
       dnf -y install epel-release; \
     fi && \
-    dnf -y install curl ca-certificates && \
+    dnf -y install --allowerasing curl ca-certificates && \
     dnf clean all
 
 # Install build tools and fio dependencies
