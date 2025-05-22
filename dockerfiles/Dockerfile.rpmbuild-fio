@@ -25,7 +25,8 @@ RUN dnf -y groupinstall "Development Tools" && \
       libaio-devel zlib-devel numactl-devel librbd-devel \
       librdmacm-devel libpmem-devel libpmemblk-devel \
       glusterfs-api-devel gtk2-devel python3-devel \
-      systemd-devel openssl-devel git wget --skip-broken && \
+      systemd-devel openssl-devel libcurl-devel \
+      libnbd-devel git wget --skip-broken && \
     dnf clean all
 
 # Create builder user and set up RPM tree
@@ -41,7 +42,7 @@ RUN curl -LO "${SRPM_URL}" && \
     mkdir -p SPECS SOURCES && \
     mv fio.spec SPECS/ && \
     mv fio-*.tar.* SOURCES/ && \
-    mv *.patch *.service *.1 *.conf 2>/dev/null || true && \
+    mv *.patch *.service *.1 *.conf *.asc 2>/dev/null || true && \
     # Download fio 3.40 tarball
     curl -L -o SOURCES/fio-3.40.tar.gz \
       https://github.com/axboe/fio/archive/refs/tags/fio-3.40.tar.gz && \
