@@ -26,7 +26,7 @@ RUN dnf -y groupinstall "Development Tools" && \
       librdmacm-devel libpmem-devel libpmemblk-devel \
       glusterfs-api-devel gtk2-devel python3-devel \
       systemd-devel openssl-devel libcurl-devel \
-      libnbd-devel git wget --skip-broken && \
+      libnbd-devel git wget gnupg2 --skip-broken && \
     dnf clean all
 
 # Create builder user and set up RPM tree
@@ -46,20 +46,23 @@ RUN curl -LO "${SRPM_URL}" && \
     # Download fio 3.40 tarball in bz2 format from upstream
     curl -L -o SOURCES/fio-3.40.tar.bz2 \
       https://brick.kernel.dk/snaps/fio-3.40.tar.bz2 && \
-    # Download the signature file if we want GPG verification
+    # Download the signature file
     curl -L -o SOURCES/fio-3.40.tar.bz2.asc \
       https://brick.kernel.dk/snaps/fio-3.40.tar.bz2.asc && \
+    # Download the GPG key needed for verification
+    curl -L -o SOURCES/F7D358FB2971E0A6.asc \
+      https://git.kernel.org/pub/scm/docs/kernel/pgpkeys.git/plain/keys/F7D358FB2971E0A6.asc && \
     # Update spec file
     cd SPECS && \
     # Update Version
     sed -i 's/^Version:.*/Version:    3.40/' fio.spec && \
+    # Update Release to reset it to 1
+    sed -i 's/^Release:.*/Release:    1%{?dist}/' fio.spec && \
     # Update Source0 to point to the correct URL (though rpmbuild won't re-download)
     sed -i 's|^Source0:.*|Source0:    https://brick.kernel.dk/snaps/fio-%{version}.tar.bz2|' fio.spec && \
     # Remove patches that might not apply to 3.40
     sed -i '/^Patch[0-9]*:/d' fio.spec && \
     sed -i '/^%patch[0-9]*/d' fio.spec && \
-    # Remove the setup line modification since we're using the standard tarball now
-    # The default %autosetup -p1 should work fine
     # Add changelog entry
     sed -i '/^%changelog/a\* '"$(date +"%a %b %d %Y")"' Builder <builder@local> - 3.40-1\
 - Updated to 3.40\
