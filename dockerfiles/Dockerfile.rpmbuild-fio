@@ -25,7 +25,7 @@ RUN dnf -y groupinstall "Development Tools" && \
       libaio-devel zlib-devel numactl-devel librbd-devel \
       librdmacm-devel libpmem-devel libpmemblk-devel \
       glusterfs-api-devel gtk2-devel python3-devel \
-      systemd-devel openssl-devel git wget && \
+      systemd-devel openssl-devel git wget --skip-broken && \
     dnf clean all
 
 # Create builder user and set up RPM tree
