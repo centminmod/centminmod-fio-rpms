@@ -43,22 +43,25 @@ RUN curl -LO "${SRPM_URL}" && \
     mv fio.spec SPECS/ && \
     mv fio-*.tar.* SOURCES/ && \
     mv *.patch *.service *.1 *.conf *.asc 2>/dev/null || true && \
-    # Download fio 3.40 tarball
-    curl -L -o SOURCES/fio-3.40.tar.gz \
-      https://github.com/axboe/fio/archive/refs/tags/fio-3.40.tar.gz && \
+    # Download fio 3.40 tarball in bz2 format from upstream
+    curl -L -o SOURCES/fio-3.40.tar.bz2 \
+      https://brick.kernel.dk/snaps/fio-3.40.tar.bz2 && \
+    # Download the signature file if we want GPG verification
+    curl -L -o SOURCES/fio-3.40.tar.bz2.asc \
+      https://brick.kernel.dk/snaps/fio-3.40.tar.bz2.asc && \
     # Update spec file
     cd SPECS && \
     # Update Version
     sed -i 's/^Version:.*/Version:    3.40/' fio.spec && \
-    # Update Source0 to use GitHub tarball
-    sed -i 's|^Source0:.*|Source0:    https://github.com/axboe/fio/archive/refs/tags/fio-%{version}.tar.gz|' fio.spec && \
+    # Update Source0 to point to the correct URL (though rpmbuild won't re-download)
+    sed -i 's|^Source0:.*|Source0:    https://brick.kernel.dk/snaps/fio-%{version}.tar.bz2|' fio.spec && \
     # Remove patches that might not apply to 3.40
     sed -i '/^Patch[0-9]*:/d' fio.spec && \
     sed -i '/^%patch[0-9]*/d' fio.spec && \
-    # Update setup line to handle GitHub tarball structure
-    sed -i 's/^%setup.*/%setup -q -n fio-fio-%{version}/' fio.spec && \
+    # Remove the setup line modification since we're using the standard tarball now
+    # The default %autosetup -p1 should work fine
     # Add changelog entry
     sed -i '/^%changelog/a\* '"$(date +"%a %b %d %Y")"' Builder <builder@local> - 3.40-1\
 - Updated to 3.40\
 - Removed patches (verify if still needed)\
-- Built from upstream GitHub release' fio.spec
+- Built from upstream release' fio.spec
