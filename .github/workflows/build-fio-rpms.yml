@@ -1,0 +1,59 @@
+name: Build fio RPMs for EL8/9/10
+
+on:
+  workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        el_version: [8, 9, 10]
+        include:
+          - el_version: 8
+            base_image: "almalinux:8"
+            srpm_url: "https://vault.centos.org/centos/8-stream/AppStream/Source/SPackages/fio-3.19-4.el8.src.rpm"
+          - el_version: 9
+            base_image: "almalinux:9"
+            srpm_url: "https://dl.rockylinux.org/vault/rocky/9.0/AppStream/source/tree/Packages/f/fio-3.27-7.el9.src.rpm"
+          - el_version: 10
+            base_image: "almalinux/10-kitten-init"
+            srpm_url: "https://mirror.stream.centos.org/10-stream/AppStream/source/tree/Packages/fio-3.36-5.el10.src.rpm"
+    
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Build Docker image for EL${{ matrix.el_version }}
+        run: |
+          docker build \
+            -f dockerfiles/Dockerfile.rpmbuild-fio \
+            --build-arg BASE_IMAGE=${{ matrix.base_image }} \
+            --build-arg EL_VERSION=${{ matrix.el_version }} \
+            --build-arg SRPM_URL="${{ matrix.srpm_url }}" \
+            -t fio-el${{ matrix.el_version }}-build:latest .
+
+      - name: Create build directory
+        run: mkdir -p output
+
+      - name: Run rpmbuild container
+        run: |
+          docker run --rm \
+            -u root \
+            -v ${{ github.workspace }}/output:/output \
+            fio-el${{ matrix.el_version }}-build:latest \
+            bash -c "
+              set -euo pipefail;
+              rpmbuild --define '_topdir /home/builder/rpmbuild' -ba /home/builder/rpmbuild/SPECS/fio.spec;
+              cp /home/builder/rpmbuild/RPMS/*/* /output/;
+              cp /home/builder/rpmbuild/SRPMS/* /output/;
+              ls -lAh /output/;
+            "
+      
+      - name: Upload RPM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fio-el${{ matrix.el_version }}-rpms
+          path: |
+            output/*.rpm
+            output/*.src.rpm

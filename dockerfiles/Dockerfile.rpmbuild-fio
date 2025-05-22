@@ -1,0 +1,61 @@
+ARG BASE_IMAGE=almalinux:9
+FROM ${BASE_IMAGE}
+
+ARG EL_VERSION=9
+ARG SRPM_URL
+
+# Handle different repo configurations based on EL version
+RUN if [ "${EL_VERSION}" = "8" ] || [ "${EL_VERSION}" = "9" ]; then \
+      dnf -y install dnf-plugins-core epel-release && \
+      dnf -y config-manager --set-enabled powertools || \
+      dnf -y config-manager --set-enabled crb; \
+    elif [ "${EL_VERSION}" = "10" ]; then \
+      dnf -y install dnf-plugins-core && \
+      dnf -y config-manager --set-enabled crb && \
+      dnf -y install epel-release; \
+    fi && \
+    dnf -y install curl ca-certificates && \
+    dnf clean all
+
+# Install build tools and fio dependencies
+RUN dnf -y groupinstall "Development Tools" && \
+    dnf -y install rpm-build rpmdevtools redhat-rpm-config \
+      libaio-devel zlib-devel numactl-devel librbd-devel \
+      librdmacm-devel libpmem-devel libpmemblk-devel \
+      glusterfs-api-devel gtk2-devel python3-devel \
+      systemd-devel openssl-devel git wget && \
+    dnf clean all
+
+# Create builder user and set up RPM tree
+RUN useradd -m builder && \
+    su - builder -c "rpmdev-setuptree"
+
+WORKDIR /home/builder/rpmbuild
+USER builder
+
+# Download base SRPM, extract, and update to 3.40
+RUN curl -LO "${SRPM_URL}" && \
+    rpm2cpio *.src.rpm | cpio -idmv && \
+    mkdir -p SPECS SOURCES && \
+    mv fio.spec SPECS/ && \
+    mv fio-*.tar.* SOURCES/ && \
+    mv *.patch *.service *.1 *.conf 2>/dev/null || true && \
+    # Download fio 3.40 tarball
+    curl -L -o SOURCES/fio-3.40.tar.gz \
+      https://github.com/axboe/fio/archive/refs/tags/fio-3.40.tar.gz && \
+    # Update spec file
+    cd SPECS && \
+    # Update Version
+    sed -i 's/^Version:.*/Version:    3.40/' fio.spec && \
+    # Update Source0 to use GitHub tarball
+    sed -i 's|^Source0:.*|Source0:    https://github.com/axboe/fio/archive/refs/tags/fio-%{version}.tar.gz|' fio.spec && \
+    # Remove patches that might not apply to 3.40
+    sed -i '/^Patch[0-9]*:/d' fio.spec && \
+    sed -i '/^%patch[0-9]*/d' fio.spec && \
+    # Update setup line to handle GitHub tarball structure
+    sed -i 's/^%setup.*/%setup -q -n fio-fio-%{version}/' fio.spec && \
+    # Add changelog entry
+    sed -i '/^%changelog/a\* '"$(date +"%a %b %d %Y")"' Builder <builder@local> - 3.40-1\
+- Updated to 3.40\
+- Removed patches (verify if still needed)\
+- Built from upstream GitHub release' fio.spec
