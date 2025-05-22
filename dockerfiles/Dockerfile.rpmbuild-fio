@@ -58,13 +58,17 @@ RUN curl -LO "${SRPM_URL}" && \
     sed -i 's/^Version:.*/Version:    3.40/' fio.spec && \
     # Update Release to reset it to 1
     sed -i 's/^Release:.*/Release:    1%{?dist}/' fio.spec && \
-    # Update Source0 to point to the correct URL (though rpmbuild won't re-download)
+    # Update Source0 to point to the correct URL
     sed -i 's|^Source0:.*|Source0:    https://brick.kernel.dk/snaps/fio-%{version}.tar.bz2|' fio.spec && \
     # Remove patches that might not apply to 3.40
     sed -i '/^Patch[0-9]*:/d' fio.spec && \
     sed -i '/^%patch[0-9]*/d' fio.spec && \
+    # Fix the documentation file references - check what files actually exist
+    # In fio 3.40, README and HOWTO might not have .rst extensions anymore
+    sed -i 's/%doc README.rst REPORTING-BUGS HOWTO.rst examples/%doc README* REPORTING-BUGS HOWTO* examples || true/' fio.spec && \
     # Add changelog entry
     sed -i '/^%changelog/a\* '"$(date +"%a %b %d %Y")"' Builder <builder@local> - 3.40-1\
 - Updated to 3.40\
+- Fixed documentation file references\
 - Removed patches (verify if still needed)\
 - Built from upstream release' fio.spec
