@@ -8,26 +8,29 @@ ARG EL_VERSION=9
 # and use a provided spec file.
 
 # Handle different repo configurations based on EL version and install common tools
-RUN if [ "${EL_VERSION}" = "8" ]; \
-    then \
+RUN if [ "${EL_VERSION}" = "8" ]; then \
+      echo "Configuring for EL8" && \
       dnf -y install dnf-plugins-core epel-release && \
       dnf -y config-manager --set-enabled powertools && \
-      dnf -y update --allowerasing epel-release; # Update epel-release to get latest package lists
-    elif [ "${EL_VERSION}" = "9" ]; \
-    then \
+      dnf -y update --allowerasing epel-release; \
+    elif [ "${EL_VERSION}" = "9" ]; then \
+      echo "Configuring for EL9" && \
       dnf -y install dnf-plugins-core epel-release && \
       dnf -y config-manager --set-enabled crb && \
       dnf -y update --allowerasing epel-release; \
-    elif [ "${EL_VERSION}" = "10" ]; \
-    then \
-      # For EL10, epel-release might need specific handling if it's not in default repos immediately
-      # CentOS Stream 10 might have EPEL available directly or via epel-next
+    elif [ "${EL_VERSION}" = "10" ]; then \
+      echo "Configuring for EL10" && \
       dnf -y install dnf-plugins-core && \
       dnf -y config-manager --set-enabled crb && \
-      dnf -y install epel-release || echo "epel-release for EL10 might need specific channel" && \
+      (dnf -y install epel-release || echo "Warning: epel-release for EL10 failed or not found for this base image. Continuing anayway.") && \
       dnf -y update --allowerasing epel-release; \
+    else \
+      echo "Error: Unsupported EL_VERSION=${EL_VERSION}" && \
+      exit 1; \
     fi && \
+    echo "Installing common packages: curl, ca-certificates" && \
     dnf -y install --allowerasing curl ca-certificates && \
+    echo "Cleaning dnf cache" && \
     dnf clean all
 
 # Install build tools and fio dependencies based on fio.spec-3.39 and for FIO 3.40
