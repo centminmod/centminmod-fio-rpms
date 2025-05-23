@@ -1,55 +1,31 @@
-# Dockerfile.rpmbuild-fio
-# Base ARG BASE_IMAGE and EL_VERSION are expected from the build command
 ARG BASE_IMAGE=almalinux:9
 FROM ${BASE_IMAGE}
 
 ARG EL_VERSION=9
-# SRPM_URL is no longer used as we fetch FIO 3.40 sources directly
-# and use a provided spec file.
 
-# Handle different repo configurations based on EL version and install common tools
+# Handle different repo configurations based on EL version
 RUN if [ "${EL_VERSION}" = "8" ]; then \
-      echo "Configuring for EL8" && \
       dnf -y install dnf-plugins-core epel-release && \
-      dnf -y config-manager --set-enabled powertools && \
-      dnf -y update --allowerasing epel-release; \
+      dnf -y config-manager --set-enabled powertools; \
     elif [ "${EL_VERSION}" = "9" ]; then \
-      echo "Configuring for EL9" && \
       dnf -y install dnf-plugins-core epel-release && \
-      dnf -y config-manager --set-enabled crb && \
-      dnf -y update --allowerasing epel-release; \
+      dnf -y config-manager --set-enabled crb; \
     elif [ "${EL_VERSION}" = "10" ]; then \
-      echo "Configuring for EL10" && \
       dnf -y install dnf-plugins-core && \
       dnf -y config-manager --set-enabled crb && \
-      (dnf -y install epel-release || echo "Warning: epel-release for EL10 failed or not found for this base image. Continuing anayway.") && \
-      dnf -y update --allowerasing epel-release; \
-    else \
-      echo "Error: Unsupported EL_VERSION=${EL_VERSION}" && \
-      exit 1; \
+      dnf -y install epel-release; \
     fi && \
-    echo "Installing common packages: curl, ca-certificates" && \
     dnf -y install --allowerasing curl ca-certificates && \
-    echo "Cleaning dnf cache" && \
     dnf clean all
 
-# Install build tools and fio dependencies based on fio.spec-3.39 and for FIO 3.40
-# This list is derived from fio.spec-3.39.txt BuildRequires for default-enabled features on RHEL
+# Install build tools and fio dependencies
 RUN dnf -y groupinstall "Development Tools" && \
     dnf -y install rpm-build rpmdevtools redhat-rpm-config \
-      gnupg2 \
-      libaio-devel \
-      zlib-devel \
-      python3-devel \
-      libcurl-devel \
-      openssl-devel \
-      libpmem-devel `# pmem is enabled by default in 3.39 spec for RHEL, but note EL10+ might aim to drop it. Spec logic will prevail.` \
-      numactl-devel `# ifnarch %{arm}` \
-      librdmacm-devel `# ifnarch %{arm}` \
-      libnl3-devel `# ifnarch %{arm} - Crucial addition from 3.39 spec for RDMA` \
-      git \
-      wget \
-      --skip-broken && \
+      libaio-devel zlib-devel numactl-devel librbd-devel \
+      librdmacm-devel libnl3-devel libpmem-devel libpmemblk-devel \
+      glusterfs-api-devel gtk2-devel python3-devel \
+      systemd-devel openssl-devel libcurl-devel \
+      libnbd-devel librbd1-devel git wget gnupg2 --skip-broken && \
     dnf clean all
 
 # Create builder user and set up RPM tree
@@ -60,14 +36,13 @@ RUN useradd -m builder && \
 USER builder
 WORKDIR /home/builder/rpmbuild
 
-# Create necessary directories if they don't exist (rpmdev-setuptree should do this)
+# Create necessary directories
 RUN mkdir -p SPECS SOURCES BUILD RPMS SRPMS
 
-# Copy the fio.spec-3.39.txt (expected to be in build context and renamed to fio.spec here)
+# Copy the fio.spec-3.39 file (expected to be in build context)
 COPY spec/fio.spec-3.39 SPECS/fio.spec
 
-# Download fio 3.40 tarball, its signature, and the PGP key
-# These correspond to Source0, Source1, Source2 in a typical spec file
+# Download fio 3.40 sources
 RUN cd SOURCES && \
     curl -L -o fio-3.40.tar.bz2 https://brick.kernel.dk/snaps/fio-3.40.tar.bz2 && \
     curl -L -o fio-3.40.tar.bz2.asc https://brick.kernel.dk/snaps/fio-3.40.tar.bz2.asc && \
@@ -78,31 +53,21 @@ RUN cd SOURCES && \
 RUN cd SPECS && \
     # Update Version to 3.40
     sed -i 's/^Version:.*/Version:    3.40/' fio.spec && \
-    # Update Release to reset it to 1 for our build
+    # Update Release to reset it to 1
     sed -i 's/^Release:.*/Release:    1%{?dist}/' fio.spec && \
-    # Update Source0 to point to the correct FIO 3.40 tarball
-    # Assuming Source0 in the 3.39 spec is the main tarball.
-    # The 3.39 spec uses http://brick.kernel.dk/snaps/%{name}-%{version}.tar.bz2
-    # We need to ensure our downloaded tarball matches this naming if %{name}-%{version} is used,
-    # or hardcode the path if needed. The current sed relies on it being the only Source0.
+    # Update Source0 to point to the correct URL
     sed -i 's|^Source0:.*|Source0:    https://brick.kernel.dk/snaps/fio-%{version}.tar.bz2|' fio.spec && \
-    # Update Source1 and Source2 if they are defined with version numbers that need changing (unlikely for asc/key)
-    # For 3.39 spec, Source1: https://brick.kernel.dk/snaps/%{name}-%{version}.tar.bz2.asc - this will update with %{version}
-    # Source2: https://git.kernel.org/pub/scm/docs/kernel/pgpkeys.git/plain/keys/F7D358FB2971E0A6.asc - this is static
-    # No changes needed for Source1/Source2 via sed if they use %{version} or are static.
-
-    # Remove patches from the 3.39 spec as they might not apply to 3.40
+    # Remove patches that might not apply to 3.40
     sed -i '/^Patch[0-9]*:/d' fio.spec && \
     sed -i '/^%patch[0-9]*/d' fio.spec && \
+    # For EL10, disable RBD and RADOS support due to missing packages
+    if [ "${EL_VERSION}" = "10" ]; then \
+      sed -i 's/%bcond rbd 1/%bcond_without rbd/' fio.spec && \
+      sed -i 's/%bcond rados 1/%bcond_without rados/' fio.spec; \
+    fi && \
     # Add changelog entry
-    # Ensure there's a %changelog line to anchor 'a\*'
-    # If fio.spec-3.39.txt doesn't end with a newline after %changelog, this might behave unexpectedly.
-    # It's safer to ensure %changelog is the last non-empty directive or add a known line before it.
-    # The provided 3.39 spec has a changelog.
     sed -i '/^%changelog/a\* '"$(date +"%a %b %d %Y")"' Builder <builder@local> - 3.40-1\
-- Updated to FIO 3.40 using fio.spec-3.39 as base.\
-- Removed original patches from spec.\
-- Built from upstream FIO 3.40 release.' fio.spec
-
-# The rpmbuild command will be run by the GitHub Action workflow.
-# It will use the SPECS/fio.spec file.
+- Updated to FIO 3.40 using fio.spec-3.39 as base\
+- Removed original patches from spec\
+- Built from upstream FIO 3.40 release\
+- Disabled RBD/RADOS support on EL10 due to missing packages' fio.spec
