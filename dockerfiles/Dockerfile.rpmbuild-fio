@@ -25,7 +25,12 @@ RUN dnf -y groupinstall "Development Tools" && \
       librdmacm-devel libnl3-devel libpmem-devel libpmemblk-devel \
       glusterfs-api-devel gtk2-devel python3-devel \
       systemd-devel openssl-devel libcurl-devel \
-      libnbd-devel librbd1-devel git wget gnupg2 --skip-broken && \
+      libnbd-devel librbd1-devel git wget gnupg2 \
+      python3-rpm-macros python-rpm-macros --skip-broken && \
+    # Install platform-python-devel on EL8 for pathfix.py
+    if [ "${EL_VERSION}" = "8" ]; then \
+      dnf -y install platform-python-devel; \
+    fi && \
     dnf clean all
 
 # Create builder user and set up RPM tree
@@ -60,6 +65,11 @@ RUN cd SPECS && \
     # Remove patches that might not apply to 3.40
     sed -i '/^Patch[0-9]*:/d' fio.spec && \
     sed -i '/^%patch[0-9]*/d' fio.spec && \
+    # For EL8, fix the pathfix.py path
+    if [ "${EL_VERSION}" = "8" ]; then \
+      # On EL8, pathfix.py is at /usr/bin/pathfix.py, not /usr/lib/rpm/redhat/pathfix.py
+      sed -i 's|%{_rpmconfigdir}/redhat/pathfix.py|/usr/bin/pathfix.py|g' fio.spec; \
+    fi && \
     # For EL10, disable RBD, RADOS, and PMEM support due to missing packages or packaging issues
     if [ "${EL_VERSION}" = "10" ]; then \
       sed -i 's/%bcond rbd 1/%bcond_without rbd/' fio.spec && \
@@ -72,4 +82,5 @@ RUN cd SPECS && \
 - Updated to FIO 3.40 using fio.spec-3.39 as base\
 - Removed original patches from spec\
 - Built from upstream FIO 3.40 release\
+- Fixed pathfix.py path on EL8\
 - Disabled RBD/RADOS/PMEM support on EL10 due to missing packages or packaging issues' fio.spec
